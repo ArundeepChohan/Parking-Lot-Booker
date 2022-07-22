@@ -1,0 +1,43 @@
+import cv2
+import numpy as np
+import pickle
+
+width=60
+height=80
+
+try:
+    with open('parking_list','rb') as f:
+        posList=pickle.load(f)
+except:
+    posList=[]
+def mouse_click(event,x,y,flags,param):
+    if event ==cv2.EVENT_LBUTTONDOWN:
+        print(x,y)
+        posList.append((x,y))
+    if event ==cv2.EVENT_RBUTTONDOWN:
+        print(x,y)
+        for i,pos in enumerate(posList):
+            # rework for parallelogram
+            x1,y1=pos
+            print(x1<x<x1+width)
+            if x1 < x < x1+width:
+                posList.pop(i)
+                break
+    with open('parking_list','wb') as f:
+        pickle.dump(posList,f)
+
+def main():
+    while True:
+        img = cv2.imread('parking_lot.png')
+        #img = cv2.resize(img,(1282,752), interpolation = cv2.INTER_AREA)
+        for pos in posList:
+           
+            lines= np.array([pos,[pos[0]+width,pos[1]],[pos[0]+(2*width),pos[1]+height],[pos[0]+width,pos[1]+height]], np.int32)
+            cv2.polylines(img,[lines],True,(255,0,0),2)
+          
+        cv2.imshow('Image',img)
+        cv2.setMouseCallback('Image',mouse_click)
+        
+        cv2.waitKey(1)
+if __name__ == '__main__':
+    main()
