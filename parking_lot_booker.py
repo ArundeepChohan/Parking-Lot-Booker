@@ -1,13 +1,14 @@
-
 from datetime import datetime
 import sqlite3
 import cv2
 import cv2
 import numpy as np
 import pickle
+import matplotlib.path as mplPath
+
 class Parking:
-    conn=None
-    cursor=None
+    conn = None
+    cursor = None
     def __init__(self, db_path):
         if self.conn is None:
             try:
@@ -17,14 +18,14 @@ class Parking:
                 self.conn = None
                 self.cursor = None
         
-        self.width=60
-        self.height=80
+        self.width = 60
+        self.height = 80
         
         try:
             with open('parking_list.dat','rb') as f:
                 self.posList=pickle.load(f)
         except:
-            self.posList=[]
+            self.posList = []
 
     def __del__(self):
         if self.conn is not None:
@@ -34,18 +35,18 @@ class Parking:
             self.cursor = None
             
     def mouse_click(self,event,x,y,flags,param):
-        if event ==cv2.EVENT_LBUTTONDOWN:
+        if event == cv2.EVENT_LBUTTONDOWN:
             #print(x,y)
-            self.posList.append((x,y))
-        if event ==cv2.EVENT_RBUTTONDOWN:
+            self.posList.append([(x,y),(x+self.width,y),(x+(2*self.width),y+self.height),((x+self.width),y+self.height)])
+        if event == cv2.EVENT_RBUTTONDOWN:
             #print(x,y)
-            for i,pos in enumerate(self.posList):    
-                x1,y1=pos
-                print(x1<x<x1+self.width)
-                # Rework for parallelogram
-                if x1 < x < x1+self.width:
+            for i,pos in enumerate(self.posList): 
+                path = mplPath.Path(pos)
+                inside = path.contains_point((x,y))
+                if inside:
                     self.posList.pop(i)
-                    break
+                    break   
+                
         with open('parking_list.dat','wb') as f:
             pickle.dump(self.posList,f)
 
@@ -76,49 +77,47 @@ class Parking:
     #Checks if last time is within 30 mins
     def check_parking_time(self,i):
         #print(f"Check index {i} within 30 minutes of now")
-        select="""SELECT booked FROM Parking WHERE spot == ?;"""
+        select = "SELECT booked FROM Parking WHERE spot == ?;"
         self.cursor.execute(select,(i,))
         record = self.cursor.fetchone()
-        #print("Database includes: ", record[0])
-        d1 = datetime.strptime(record[0], "%Y-%m-%d %H:%M:%S.%f")
-        d2 = datetime.now()
+        if record:
+            #print("Database includes: ", record[0])
+            d1 = datetime.strptime(record[0], "%Y-%m-%d %H:%M:%S.%f")
+            d2 = datetime.now()
 
-        # difference between dates in timedelta
-        delta = (d2 - d1).total_seconds() / 60.0
-        return delta>=30
-        
+            # difference between dates in timedelta
+            delta = (d2 - d1).total_seconds() / 60.0
+            return delta >= 30
+        return False
 
     def check_parking_space(self,imgDilate,img):
-        parked=0
-        n=len(self.posList)
+        parked = 0
+        n = len(self.posList)
         for i,pos in enumerate(self.posList):
-            x,y=pos
-            # Figure parallel crop
-            imgCrop=imgDilate[y:y+self.height,x:x+(2*self.width)]
+            x,y = pos[0]
+            imgCrop = imgDilate[y:y+self.height,x:x+(2*self.width)]
             #cv2.imshow(str(x*y),imgCrop)
-            count=cv2.countNonZero(imgCrop)
+            count = cv2.countNonZero(imgCrop)
             #print(count)
-            if count<900:
-                color=(0,255,0)
+            if count < 900:
+                color = (0,255,0)
                 thickness=5
             else:
                 if self.check_parking_time(i):
-                    color=(255, 85, 0)
-                    thickness=2
-
+                    color = (255, 85, 0)
+                    thickness = 2
                 else:
-                    color=(0,0,255)
-                    thickness=2
-                parked+=1
+                    color = (0,0,255)
+                    thickness = 2
+                parked += 1
             #self.update_parking(i)
-            lines = np.array([pos,[x+self.width,y],[x+(2*self.width),y+self.height],[x+self.width,y+self.height]], np.int32)
-            img_poly=cv2.polylines(img,[lines],True,color,thickness)
+            lines = np.array([pos], np.int32)
+            img_poly = cv2.polylines(img,[lines],True,color,thickness)
             cv2.putText(img_poly,str(count),(x,y+5),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
         cv2.putText(img,f"{parked}/{n}",(50,50),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
 
 
 def main():
-    
     print('Started')
     database = 'parking_lot_booker.db'
     parking = Parking(database)
@@ -132,12 +131,12 @@ def main():
             if cap.get(cv2.CAP_PROP_POS_FRAMES)==cap.get(cv2.CAP_PROP_FRAME_COUNT):
                 cap.set(cv2.CAP_PROP_POS_FRAMES,0)
             success,img = cap.read()
-            imgGray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-            imgBlur= cv2.GaussianBlur(imgGray,(3,3),1)
-            imgThreshhold=cv2.adaptiveThreshold(imgBlur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,25,16)
-            imgMedian=cv2.medianBlur(imgThreshhold,5)
-            kernel=np.ones((3,3),np.uint8)
-            imgDilate=cv2.dilate(imgMedian,kernel,iterations=1)
+            imgGray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+            imgBlur = cv2.GaussianBlur(imgGray,(3,3),1)
+            imgThreshhold = cv2.adaptiveThreshold(imgBlur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,25,16)
+            imgMedian = cv2.medianBlur(imgThreshhold,5)
+            kernel = np.ones((3,3),np.uint8)
+            imgDilate = cv2.dilate(imgMedian,kernel,iterations=1)
             parking.check_parking_space(imgDilate,img)
             cv2.imshow('Image',img)
             #cv2.imshow('ImageBlur',imgBlur)
@@ -147,6 +146,7 @@ def main():
             cv2.setMouseCallback('Image',parking.mouse_click)
             cv2.waitKey(10)
     parking.__del__()
+
 if __name__ == '__main__':
     main()
    
