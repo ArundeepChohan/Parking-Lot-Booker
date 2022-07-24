@@ -93,15 +93,24 @@ class Parking:
     def check_parking_space(self,imgDilate,img):
         parked = 0
         n = len(self.posList)
+        
         for i,pos in enumerate(self.posList):
             x,y = pos[0]
-            imgCrop = imgDilate[y:y+self.height,x:x+(2*self.width)]
+            lines = np.array([pos], np.int32)
+            mask = np.zeros(imgDilate.shape[:2], np.uint8)
+            cv2.fillPoly(mask,[lines],color=(255, 255, 255))
+            masked = cv2.bitwise_and(imgDilate, mask)
+            #cv2.imshow(str(x*y),masked)
+            #imgCrop = masked[y:y+self.height,x:x+(2*self.width)]
+            imgCrop = cv2.polylines(masked,[lines],True,color=(255, 255, 255))
             #cv2.imshow(str(x*y),imgCrop)
             count = cv2.countNonZero(imgCrop)
+            area = cv2.contourArea(lines)
+            #print(area)
             #print(count)
-            if count < 900:
+            if count < area/6:
                 color = (0,255,0)
-                thickness=5
+                thickness = 5
             else:
                 if self.check_parking_time(i):
                     color = (255, 85, 0)
@@ -111,7 +120,7 @@ class Parking:
                     thickness = 2
                 parked += 1
             #self.update_parking(i)
-            lines = np.array([pos], np.int32)
+            
             img_poly = cv2.polylines(img,[lines],True,color,thickness)
             cv2.putText(img_poly,str(count),(x,y+5),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
         cv2.putText(img,f"{parked}/{n}",(50,50),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
