@@ -1,102 +1,152 @@
+
+from datetime import datetime
 import sqlite3
-from sqlite3 import Error
 import cv2
 import cv2
 import numpy as np
 import pickle
+class Parking:
+    conn=None
+    cursor=None
+    def __init__(self, db_path):
+        if self.conn is None:
+            try:
+                self.conn = sqlite3.connect(db_path)
+                self.cursor = self.conn.cursor()
+            except:
+                self.conn = None
+                self.cursor = None
+        
+        self.width=60
+        self.height=80
+        
+        try:
+            with open('parking_list.dat','rb') as f:
+                self.posList=pickle.load(f)
+        except:
+            self.posList=[]
 
-width=60
-height=80
+    def __del__(self):
+        if self.conn is not None:
+            self.cursor.close()
+            self.conn.close()
+            self.conn = None
+            self.cursor = None
+            
+    def mouse_click(self,event,x,y,flags,param):
+        if event ==cv2.EVENT_LBUTTONDOWN:
+            #print(x,y)
+            self.posList.append((x,y))
+        if event ==cv2.EVENT_RBUTTONDOWN:
+            #print(x,y)
+            for i,pos in enumerate(self.posList):    
+                x1,y1=pos
+                print(x1<x<x1+self.width)
+                # Rework for parallelogram
+                if x1 < x < x1+self.width:
+                    self.posList.pop(i)
+                    break
+        with open('parking_list.dat','wb') as f:
+            pickle.dump(self.posList,f)
 
-try:
-    with open('parking_list','rb') as f:
-        posList=pickle.load(f)
-except:
-    posList=[]
-def mouse_click(event,x,y,flags,param):
-    if event ==cv2.EVENT_LBUTTONDOWN:
-        print(x,y)
-        posList.append((x,y))
-    if event ==cv2.EVENT_RBUTTONDOWN:
-        print(x,y)
-        for i,pos in enumerate(posList):    
-            x1,y1=pos
-            print(x1<x<x1+width)
-            # Rework for parallelogram
-            if x1 < x < x1+width:
-                posList.pop(i)
-                break
-    with open('parking_list','wb') as f:
-        pickle.dump(posList,f)
-def create_connection(db_file):
-    """ create a database connection to the SQLite database
-        specified by db_file
-    :param db_file: database file
-    :return: Connection object or None
-    """
-    conn = None
-    try:
-        conn = sqlite3.connect(db_file)
-    except Error as e:
-        print(e)
 
-    return conn
+    def make_db(self):
+        #print("Database created and Successfully Connected to SQLite")
+        create = "CREATE TABLE IF NOT EXISTS Parking (spot INTEGER NOT NULL PRIMARY KEY, booked TIMESTAMP);"
+        select = "SELECT * FROM Parking;"
+        self.cursor.execute(create)
+        self.cursor.execute(select)
+        record = self.cursor.fetchall()
+        #print("Database includes: ", record)
 
-def check_parking_space(imgDilate,img):
-    for pos in posList:
-        x,y=pos
-        # Figure parallel crop
-        imgCrop=imgDilate[y:y+height,x:x+(2*width)]
-        #cv2.imshow(str(x*y),imgCrop)
-        count=cv2.countNonZero(imgCrop)
-        print(count)
-        if count<900:
-            color=(0,255,0)
-            thickness=5
-        else:
-            color=(0,0,255)
-            thickness=2
-        lines = np.array([pos,[x+width,y],[x+(2*width),y+height],[x+width,y+height]], np.int32)
-        img_poly=cv2.polylines(img,[lines],True,color,thickness)
-        cv2.putText(img_poly,str(count),(x,y+5),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(0,255,25),lineType = cv2.LINE_4)
+    #Useful for testing
+    def update_parking(self,i):
+        #print(f"Updating index {i} with new date")
+        insert = "INSERT OR REPLACE INTO Parking(spot,booked) VALUES(?,?)"
+        data_tuple = (i, datetime.now())
+        #print(data_tuple)
+        self.cursor.execute(insert,data_tuple)
+        self.conn.commit()
+        select="SELECT booked FROM Parking WHERE spot == ?;"
+        self.cursor.execute(select,(i,))
+        record = self.cursor.fetchone()
+        #print("Database now includes: ", record[0] )
+        
+
+    #Checks if last time is within 30 mins
+    def check_parking_time(self,i):
+        #print(f"Check index {i} within 30 minutes of now")
+        select="""SELECT booked FROM Parking WHERE spot == ?;"""
+        self.cursor.execute(select,(i,))
+        record = self.cursor.fetchone()
+        #print("Database includes: ", record[0])
+        d1 = datetime.strptime(record[0], "%Y-%m-%d %H:%M:%S.%f")
+        d2 = datetime.now()
+
+        # difference between dates in timedelta
+        delta = (d2 - d1).total_seconds() / 60.0
+        return delta>=30
+        
+
+    def check_parking_space(self,imgDilate,img):
+        parked=0
+        n=len(self.posList)
+        for i,pos in enumerate(self.posList):
+            x,y=pos
+            # Figure parallel crop
+            imgCrop=imgDilate[y:y+self.height,x:x+(2*self.width)]
+            #cv2.imshow(str(x*y),imgCrop)
+            count=cv2.countNonZero(imgCrop)
+            #print(count)
+            if count<900:
+                color=(0,255,0)
+                thickness=5
+            else:
+                if self.check_parking_time(i):
+                    color=(255, 85, 0)
+                    thickness=2
+
+                else:
+                    color=(0,0,255)
+                    thickness=2
+                parked+=1
+            #self.update_parking(i)
+            lines = np.array([pos,[x+self.width,y],[x+(2*self.width),y+self.height],[x+self.width,y+self.height]], np.int32)
+            img_poly=cv2.polylines(img,[lines],True,color,thickness)
+            cv2.putText(img_poly,str(count),(x,y+5),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
+        cv2.putText(img,f"{parked}/{n}",(50,50),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
 
 
 def main():
+    
+    print('Started')
     database = 'parking_lot_booker.db'
-
-    # create a database connection
-    conn = create_connection(database)
-    with conn:
-        print('Started')
-        # Create a VideoCapture object and read from input file
-        # If the input is the camera, pass 0 instead of the video file name
+    parking = Parking(database)
+    parking.make_db()
+    # Create a VideoCapture object and read from input file
+    # If the input is the camera, pass 0 instead of the video file name
+    if parking:
         cap = cv2.VideoCapture('parking_lot.mp4')
-        
+            
         while True:
             if cap.get(cv2.CAP_PROP_POS_FRAMES)==cap.get(cv2.CAP_PROP_FRAME_COUNT):
                 cap.set(cv2.CAP_PROP_POS_FRAMES,0)
             success,img = cap.read()
-            #img = cv2.resize(img,(1282,752), interpolation = cv2.INTER_AREA)
             imgGray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
             imgBlur= cv2.GaussianBlur(imgGray,(3,3),1)
             imgThreshhold=cv2.adaptiveThreshold(imgBlur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,25,16)
             imgMedian=cv2.medianBlur(imgThreshhold,5)
             kernel=np.ones((3,3),np.uint8)
             imgDilate=cv2.dilate(imgMedian,kernel,iterations=1)
-            check_parking_space(imgDilate,img)
-            #for pos in posList:
-                #x,y=pos
-                #lines = np.array([pos,[x+width,y],[x+(2*width),y+height],[x+width,y+height]], np.int32)
-                #img_poly=cv2.polylines(img,[lines],True,(0,0,255),2)
-                
+            parking.check_parking_space(imgDilate,img)
             cv2.imshow('Image',img)
             #cv2.imshow('ImageBlur',imgBlur)
             #cv2.imshow('ImageThresh',imgThreshhold)
             #cv2.imshow('ImageMedian',imgMedian)
             #cv2.imshow('ImageDilate',imgDilate)
-            cv2.setMouseCallback('Image',mouse_click)
+            cv2.setMouseCallback('Image',parking.mouse_click)
             cv2.waitKey(10)
-
+    parking.__del__()
 if __name__ == '__main__':
     main()
    

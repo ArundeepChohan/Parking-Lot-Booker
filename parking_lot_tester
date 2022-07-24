@@ -6,7 +6,7 @@ width=60
 height=80
 
 try:
-    with open('parking_list','rb') as f:
+    with open('parking_list.dat','rb') as f:
         posList=pickle.load(f)
 except:
     posList=[]
@@ -23,13 +23,12 @@ def mouse_click(event,x,y,flags,param):
             if x1 < x < x1+width:
                 posList.pop(i)
                 break
-    with open('parking_list','wb') as f:
+    with open('parking_list.dat','wb') as f:
         pickle.dump(posList,f)
 
 def main():
     while True:
         img = cv2.imread('parking_lot.png')
-        #img = cv2.resize(img,(1282,752), interpolation = cv2.INTER_AREA)
         for pos in posList:
            
             lines= np.array([pos,[pos[0]+width,pos[1]],[pos[0]+(2*width),pos[1]+height],[pos[0]+width,pos[1]+height]], np.int32)
