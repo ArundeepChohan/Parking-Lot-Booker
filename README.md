@@ -6,3 +6,4 @@ venv/scripts/activate
 
 pip install opencv-python
 
+pip install matplotlib
