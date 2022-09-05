@@ -1,0 +1,67 @@
+import cv2
+import numpy as np
+import pickle
+import matplotlib.path as mplPath
+width=60
+height=80
+
+try:
+    with open('parking_list.dat','rb') as f:
+        posList=pickle.load(f)
+except:
+    posList=[]
+    
+class BoundingBoxWidget(object):
+    def __init__(self):
+        self.original_image = cv2.imread('parking_lot.png')
+        self.clone = self.original_image.copy()
+        cv2.namedWindow('image')
+        cv2.setMouseCallback('image', self.extract_coordinates)
+
+        # Bounding box reference points
+        self.image_coordinates = []
+
+    def extract_coordinates(self, event, x, y, flags, parameters):
+        global posList
+        print('This is posList',posList)
+        if event == cv2.EVENT_LBUTTONDOWN:
+            print(x,y)
+            posList.append([(x,y),(x+width,y),(x+(2*width),y+height),((x+width),y+height)])
+        if event == cv2.EVENT_RBUTTONDOWN:
+            #print(x,y)
+            for i,pos in enumerate(posList): 
+                path = mplPath.Path(pos)
+                inside = path.contains_point((x,y))
+                if inside:
+                    posList.pop(i)
+                    break   
+                
+        with open('parking_list.dat','wb') as f:
+            pickle.dump(posList,f)
+        self.image_coordinates=[[x,y],[x+width,y],[x+(2*width),y+height],[(x+width),y+height]]
+        print(self.image_coordinates)
+        points = np.array(self.image_coordinates)
+        #points = points.reshape((-1, 1, 2))
+        self.clone = self.original_image.copy()
+        cv2.polylines(self.clone,[points] ,True,(255,0,0),2)
+        for pos in posList:
+            lines= np.array([pos], np.int32)
+            cv2.polylines(self.clone,[lines],True,(255,0,0),2)
+        cv2.imshow("image", self.clone) 
+
+    def show_image(self):
+        return self.clone
+
+def main():
+    boundingbox_widget = BoundingBoxWidget()
+
+    while True:
+        cv2.imshow('image', boundingbox_widget.show_image())
+        key = cv2.waitKey(1)
+
+        # Close program with keyboard 'q'
+        if key == ord('q'):
+            cv2.destroyAllWindows()
+            exit(1)
+if __name__ == '__main__':
+    main()

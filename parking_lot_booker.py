@@ -1,7 +1,6 @@
 from datetime import datetime
 import sqlite3
 import cv2
-import cv2
 import numpy as np
 import pickle
 import matplotlib.path as mplPath
