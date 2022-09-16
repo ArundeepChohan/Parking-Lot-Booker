@@ -7,8 +7,11 @@ while True:
 
     cv2.imshow("Camera", frame)
 
-    if cv2.waitKey(1) == ord('q'):
-        break
+    key=cv2.waitKey(10)
+    # Close program with keyboard 'q'
+    if key == ord('q'):
+        cv2.destroyAllWindows()
+        exit(1)
 
 cap.release()
 cv2.destroyAllWindows()

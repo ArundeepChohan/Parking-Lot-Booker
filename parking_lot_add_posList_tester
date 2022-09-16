@@ -37,7 +37,10 @@ def main():
           
         cv2.imshow('Image',img)
         cv2.setMouseCallback('Image',mouse_click)
-        
-        cv2.waitKey(1)
+        key=cv2.waitKey(10)
+        # Close program with keyboard 'q'
+        if key == ord('q'):
+            cv2.destroyAllWindows()
+            exit(1)
 if __name__ == '__main__':
     main()

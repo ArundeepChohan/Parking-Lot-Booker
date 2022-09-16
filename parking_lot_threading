@@ -1,3 +1,5 @@
+from tkinter import *
+import threading
 from datetime import datetime
 import sqlite3
 import cv2
@@ -19,12 +21,22 @@ class Parking:
         
         self.width = 60
         self.height = 80
-        
+        self.x = 0
+        self.y = 0
+        self.clone = None
+        self.values = []
+        self.bb_poly = []
         try:
             with open('parking_list.dat','rb') as f:
                 self.posList=pickle.load(f)
         except:
             self.posList = []
+
+    def set_values(self,values):
+        self.values = values
+
+    def set_image(self,image):
+        self.clone = image
 
     def __del__(self):
         if self.conn is not None:
@@ -32,11 +44,25 @@ class Parking:
             self.conn.close()
             self.conn = None
             self.cursor = None
-            
-    def mouse_click(self,event,x,y,flags,param):
+
+    def bounding_box(self):
+        self.bb_poly = []
+        self.bb_poly.append((self.x,self.y))
+
+        for i in range(len(self.values)):
+            self.bb_poly.append((self.x+int(self.values[i][0]),self.y+int(self.values[i][1])))
+        #print(self.bb_poly)
+        
+        points = np.array(self.bb_poly)
+        cv2.polylines(self.clone, [points], True, (255,0,0), 2, cv2.LINE_AA) 
+        #cv2.imshow('Image', self.clone)
+
+    def mouse_handler(self,event,x,y,flags,param):
+        self.x = x
+        self.y = y
         if event == cv2.EVENT_LBUTTONDOWN:
             #print(x,y)
-            self.posList.append([(x,y),(x+self.width,y),(x+(2*self.width),y+self.height),((x+self.width),y+self.height)])
+            self.posList.append(self.bb_poly)
         if event == cv2.EVENT_RBUTTONDOWN:
             #print(x,y)
             for i,pos in enumerate(self.posList): 
@@ -48,7 +74,6 @@ class Parking:
                 
         with open('parking_list.dat','wb') as f:
             pickle.dump(self.posList,f)
-
 
     def make_db(self):
         #print("Database created and Successfully Connected to SQLite")
@@ -71,7 +96,6 @@ class Parking:
         self.cursor.execute(select,(i,))
         record = self.cursor.fetchone()
         #print("Database now includes: ", record[0] )
-        
 
     #Checks if last time is within 30 mins
     def check_parking_time(self,i):
@@ -107,16 +131,14 @@ class Parking:
             area = cv2.contourArea(lines)
             #print(area)
             #print(count)
+            thickness = 2
             if count < area/6:
                 color = (0,255,0)
-                thickness = 5
             else:
                 if self.check_parking_time(i):
                     color = (255, 85, 0)
-                    thickness = 2
                 else:
                     color = (0,0,255)
-                    thickness = 2
                 parked += 1
             #self.update_parking(i)
             
@@ -124,9 +146,57 @@ class Parking:
             cv2.putText(img_poly,str(count),(x,y+5),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
         cv2.putText(img,f"{parked}/{n}",(50,50),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale = 1,color=(255,0,255),lineType = cv2.LINE_4)
 
+root = Tk()
+values = []
 
-def main():
-    print('Started')
+class Menu():
+    def __init__(self,root):
+        self.root = root
+        self.root.title("Parking Lot Edge Selector")
+        self.root.geometry("600x600")
+        self.edges = Entry(self.root) 
+        self.edges.grid(row=0,column=0)
+        self.button = Button(self.root, text="Press me", command=self.press)
+        self.button.grid(row=1,column=0)
+        self.textbox = list()
+        self.size = 0
+        self.values = []
+        self.submitBoxes = list()
+
+    def delete_rows(self):
+        for i in reversed(range(self.size*2)):
+           self.textbox[i].grid_remove()
+        for j in reversed(range(len(self.submitBoxes))):
+            self.submitBoxes[j].grid_remove()
+
+    def submit(self):
+        print('Submitted')
+        points = [x.get() for x in self.textbox]
+        self.values = np.reshape(points, (-1, 2))
+        global values
+        values = self.values
+
+    """   This should limit the number of boxes to self.edges """
+    def press(self):
+        print('Pressed')
+        self.delete_rows()
+        self.textbox = list()
+        self.submitBoxes = list()
+        self.size = int(self.edges.get())
+        self.values = []
+        for i in range(self.size):
+            for j in range(2):
+                self.values.append(StringVar(None))
+                col0 = Entry(self.root,textvariable=self.values[-1]) 
+                col0.insert(END, '0')
+                self.textbox.append(col0)
+                self.textbox[-1].grid(row=i+2,column=j)
+        self.submitBoxes.append(Button(self.root, text="Submit values", command=self.submit))
+        self.submitBoxes[-1].grid(row=(i+1*2)+3,column=0)
+
+def parking_runner():
+    global values
+
     database = 'parking_lot_booker.db'
     parking = Parking(database)
     parking.make_db()
@@ -136,29 +206,41 @@ def main():
         cap = cv2.VideoCapture('parking_lot.mp4')
             
         while True:
+            #print(values)
             if cap.get(cv2.CAP_PROP_POS_FRAMES)==cap.get(cv2.CAP_PROP_FRAME_COUNT):
                 cap.set(cv2.CAP_PROP_POS_FRAMES,0)
             success,img = cap.read()
-            imgGray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+            clone = img.copy()
+            parking.set_image(clone)
+            parking.set_values(values)
+           
+            imgGray = cv2.cvtColor(clone,cv2.COLOR_BGR2GRAY)
             imgBlur = cv2.GaussianBlur(imgGray,(3,3),1)
             imgThreshhold = cv2.adaptiveThreshold(imgBlur,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,25,16)
             imgMedian = cv2.medianBlur(imgThreshhold,5)
             kernel = np.ones((3,3),np.uint8)
             imgDilate = cv2.dilate(imgMedian,kernel,iterations=1)
-            parking.check_parking_space(imgDilate,img)
-            cv2.imshow('Image',img)
+            parking.check_parking_space(imgDilate,clone) 
+            parking.bounding_box()
+            cv2.imshow('Image',clone)
             #cv2.imshow('ImageBlur',imgBlur)
             #cv2.imshow('ImageThresh',imgThreshhold)
             #cv2.imshow('ImageMedian',imgMedian)
             #cv2.imshow('ImageDilate',imgDilate)
-            cv2.setMouseCallback('Image',parking.mouse_click)
-            key=cv2.waitKey(10)
+            cv2.setMouseCallback('Image',parking.mouse_handler)
+            key = cv2.waitKey(10)
             # Close program with keyboard 'q'
             if key == ord('q'):
                 cv2.destroyAllWindows()
                 exit(1)
     parking.__del__()
 
+def main():
+    global root
+    app = Menu(root)
+    control_thread = threading.Thread(target=parking_runner)
+    control_thread.start()
+    root.mainloop()
+
 if __name__ == '__main__':
     main()
-   

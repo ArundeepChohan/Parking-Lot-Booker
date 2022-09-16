@@ -57,7 +57,7 @@ def main():
 
     while True:
         cv2.imshow('image', boundingbox_widget.show_image())
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(10)
 
         # Close program with keyboard 'q'
         if key == ord('q'):
